@@ -188,6 +188,9 @@ class GUI(threading.Thread):
             row.pack(side=TOP, fill=X, padx=5, pady=5)
             lab.pack(side=LEFT)
             ent.pack(side=RIGHT, expand=YES, fill=X)
+            if(field == "On/Off Keybind (Default is F2)"):
+                ent.insert(END, "Currently Unavailable")
+                ent.config(state=DISABLED)
             entries.append((field, ent))
         return entries
 
