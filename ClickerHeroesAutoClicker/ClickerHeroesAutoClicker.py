@@ -121,6 +121,8 @@ class GUI(threading.Thread):
 
     def run(self):
         self.root = Tk()
+        self.root.title("Storm's Auto-Clicker")
+        self.root.iconbitmap('../Icons/clicker.ico')
         self.root.protocol("WM_DELETE_WINDOW", self.callback)
         ents = self.makeform(self.root)
         self.root.bind('<Return>', (lambda event, e=ents: self.fetch(e)))   
