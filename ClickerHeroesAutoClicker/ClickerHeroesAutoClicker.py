@@ -18,6 +18,8 @@ class AutoClicker(threading.Thread):
         self.running = False
         self.stop = False
         self.check_thread = None
+        self.min_cps = .05
+        self.max_cps = 86400
 
     def WindowExists(self):
         try:
@@ -53,7 +55,7 @@ class AutoClicker(threading.Thread):
 
         else:
              print("Window NOT Found")
-             quit()
+
 
     def left_click(self,window):
         rect = win32gui.GetWindowRect(window)
@@ -109,6 +111,8 @@ class GUI(threading.Thread):
         self.auto_clicker = auto_clicker;
         self.check_thread = check_thread;
         self.fields = 'Window Name', 'Click Speed (in seconds)', 'On/Off Keybind (Default is F2)'
+        self.start()
+        self.windows = []
 
     def callback(self):
         self.check_thread.stop = True
@@ -127,45 +131,74 @@ class GUI(threading.Thread):
         b2.pack(side=LEFT, padx=5, pady=5)
         self.root.mainloop()
 
+    def validate_cps_entry(self, cps):
+        if(cps < self.auto_clicker.min_cps or cps > self.auto_clicker.max_cps):
+            return False
+        return True
+
     def fetch(self, entries):
         count = 0 
+        valid_window_name = False
         for entry in entries:
             field = entry[0]
             text  = entry[1].get()
             if(count == 0):
                 self.auto_clicker.old_window_name = self.auto_clicker.window_name
                 self.auto_clicker.window_name = text
+                for window in self.windows:
+                    if(text.lower() == window.lower()):
+                        valid_window_name = True
+                        if(entry[1]['bg'] == 'red'):
+                            entry[1]['bg'] = 'white'
+                        break
+                if(not valid_window_name):
+                    entry[1].delete(0,'end')
+                    entry[1]['bg'] = 'red'
+                    entry[1].insert(END, "Cannot Find Window")
             elif(count == 1):
-                self.auto_clicker.cps = float(text)
+                if(self.validate_cps_entry(float(text))):
+                    if(entry[1]['bg'] == 'red'):
+                            entry[1]['bg'] = 'white'
+                    self.auto_clicker.cps = float(text)
+                else:
+                    entry[1].delete(0, 'end')
+                    entry[1]['bg'] = 'red'
+                    entry[1].insert(END, "Value has to be between .05 and 86400")
 
             count += 1
 
         if(not self.check_thread.is_alive() and not self.auto_clicker.is_alive()):
-            self.check_thread.start()
-            self.auto_clicker.start()
+            if(valid_window_name):
+                self.check_thread.start()
+                self.auto_clicker.start()
+
+    def get_all_window_titles(self, hwnd, l_param):
+        window_title = win32gui.GetWindowText(hwnd)
+        if(win32gui.IsWindowVisible(hwnd) and window_title != ""):
+            self.windows.append(window_title)
 
     def makeform(self, root):
-       entries = []
-       for field in self.fields:
-          row = Frame(root)
-          lab = Label(row, width=0, text=field, anchor='w')
-          ent = Entry(row)
-          row.pack(side=TOP, fill=X, padx=5, pady=5)
-          lab.pack(side=LEFT)
-          ent.pack(side=RIGHT, expand=YES, fill=X)
-          entries.append((field, ent))
-       return entries
+        win32gui.EnumWindows(self.get_all_window_titles, None)
+        
+        entries = []
+        for field in self.fields:
+            row = Frame(root)
+            lab = Label(row, width=0, text=field, anchor='w')
+            ent = Entry(row)
+            row.pack(side=TOP, fill=X, padx=5, pady=5)
+            lab.pack(side=LEFT)
+            ent.pack(side=RIGHT, expand=YES, fill=X)
+            entries.append((field, ent))
+        return entries
 
 def main():
     auto_clicker = AutoClicker()
     check_thread = CheckThread(auto_clicker)
     gui = GUI(auto_clicker, check_thread)
-    gui.start()
     
     gui.join()
     check_thread.join()
     auto_clicker.join()
-    
     
 
 if __name__ == "__main__":
