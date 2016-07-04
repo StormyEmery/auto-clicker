@@ -3,11 +3,17 @@ import ctypes, ctypes.wintypes
 import time
 import threading
 
-class AutoClicker:
+from tkinter import *
 
-    def __init__ (self, cps, window_name):
-        self.cps = cps;
-        self.window_name = window_name;
+class AutoClicker(threading.Thread):
+
+    def __init__ (self):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.cps = .1;
+        self.window_name = ""
+        self.old_window_name = self.window_name
+        self.keybind = "F2"
         self.running = False;
 
     def WindowExists(self):
@@ -19,17 +25,23 @@ class AutoClicker:
         else:
             self.window = window
 
-    def start(self):
+    def my_start(self):
 
         self.WindowExists()
 
         if(self.window):
             while True:          
                 while self.running:
-                    self.left_click(self.window)
+                    if(self.old_window_name != self.window_name):
+                        self.WindowExists()
+                    if(self.window):
+                        self.left_click(self.window)
                     time.sleep(self.cps)
 
                 time.sleep(0.2) #to keep CPU usage down while not auto-clicking
+                #mouse_pos = win32gui.GetCursorPos()
+                #print("Mouse Pos: (%d, %d)" % (mouse_pos[0], mouse_pos[1]))
+
         else:
              print("Window NOT Found")
              quit()
@@ -60,6 +72,9 @@ class AutoClicker:
                 ctypes.windll.user32.DispatchMessageA(ctypes.byref(msg))
         finally:
             ctypes.windll.user32.UnregisterHotKey(None, 1)
+     
+    def run(self):
+        self.my_start()
 
 
 class CheckThread(threading.Thread):
@@ -67,26 +82,71 @@ class CheckThread(threading.Thread):
     def __init__(self, auto_clicker):
         threading.Thread.__init__(self)
         self.auto_clicker = auto_clicker
+        self.daemon = True
         
     def run(self):
         self.auto_clicker.check_for_stop()
 
+class GUI(threading.Thread):
+
+    def __init__(self, auto_clicker, check_thread):
+        threading.Thread.__init__(self)
+        self.auto_clicker = auto_clicker;
+        self.check_thread = check_thread;
+        self.fields = 'Window Name', 'Click Speed (in seconds)', 'On/Off Keybind (Default is F2)'
+
+    def callback(self):
+        self.root.quit()
+
+    def run(self):
+        self.root = Tk()
+        self.root.protocol("WM_DELETE_WINDOW", self.callback)
+        ents = self.makeform(self.root)
+        self.root.bind('<Return>', (lambda event, e=ents: self.fetch(e)))   
+        b1 = Button(self.root, text='Save',
+                command=(lambda e=ents: self.fetch(e)))
+        b1.pack(side=LEFT, padx=5, pady=5)
+        b2 = Button(self.root, text='Quit', command=self.root.quit)
+        b2.pack(side=LEFT, padx=5, pady=5)
+        self.root.mainloop()
+
+    def fetch(self, entries):
+        count = 0 
+        for entry in entries:
+            field = entry[0]
+            text  = entry[1].get()
+            if(count == 0):
+                self.auto_clicker.old_window_name = self.auto_clicker.window_name
+                self.auto_clicker.window_name = text
+            elif(count == 1):
+                self.auto_clicker.cps = float(text)
+
+            count += 1
+
+        if(not self.check_thread.is_alive() and not self.auto_clicker.is_alive()):
+            self.check_thread.start()
+            self.auto_clicker.start()
+
+    def makeform(self, root):
+       entries = []
+       for field in self.fields:
+          row = Frame(root)
+          lab = Label(row, width=0, text=field, anchor='w')
+          ent = Entry(row)
+          row.pack(side=TOP, fill=X, padx=5, pady=5)
+          lab.pack(side=LEFT)
+          ent.pack(side=RIGHT, expand=YES, fill=X)
+          entries.append((field, ent))
+       return entries
 
 def main():
-    print("Welcome to Storm's Auto-Clicker!")
-    window_name = input("Name of window you want to auto-click: ")
-    print("Window name: " + window_name)
-    click_speed = input("How fast should I click? (in seconds): ")
-    print("Click Speed: " + click_speed + "\n")
-    print("Preparing...\n")
-    time.sleep(3)
-    print("To start/stop ultimate clickage, tap the 'F2' key!")              
-    print("If you need to change the click speed or typed in the wrong window name, just close this application and restart it.")
-    auto_clicker = AutoClicker(float(click_speed), window_name)
+    auto_clicker = AutoClicker()
     check_thread = CheckThread(auto_clicker)
-
-    check_thread.start()
-    auto_clicker.start()
+    gui = GUI(auto_clicker, check_thread)
+    gui.start()
+    
+    gui.join()
+    
     
 
 if __name__ == "__main__":
