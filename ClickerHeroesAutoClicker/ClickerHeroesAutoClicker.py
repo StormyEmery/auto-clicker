@@ -2,6 +2,7 @@
 import ctypes, ctypes.wintypes
 import time
 import threading
+import msvcrt
 
 from tkinter import *
 
@@ -9,12 +10,14 @@ class AutoClicker(threading.Thread):
 
     def __init__ (self):
         threading.Thread.__init__(self)
-        self.daemon = True
+        self.setDaemon(True)
         self.cps = .1;
         self.window_name = ""
         self.old_window_name = self.window_name
         self.keybind = "F2"
-        self.running = False;
+        self.running = False
+        self.stop = False
+        self.check_thread = None
 
     def WindowExists(self):
         try:
@@ -37,6 +40,12 @@ class AutoClicker(threading.Thread):
                     if(self.window):
                         self.left_click(self.window)
                     time.sleep(self.cps)
+
+                    if(self.stop): #break inner loop
+                        break;
+
+                if(self.stop): #break outer loop
+                        break;
 
                 time.sleep(0.2) #to keep CPU usage down while not auto-clicking
                 #mouse_pos = win32gui.GetCursorPos()
@@ -63,15 +72,18 @@ class AutoClicker(threading.Thread):
     #http://stackoverflow.com/questions/15777719/how-to-detect-key-press-when-the-console-window-has-lost-focus
     def check_for_stop(self):
         ctypes.windll.user32.RegisterHotKey(None, 1, 0, win32con.VK_F2)
-        try:
-            msg = ctypes.wintypes.MSG()
-            while ctypes.windll.user32.GetMessageA(ctypes.byref(msg), None, 0, 0) != 0:
+
+        msg = ctypes.wintypes.MSG()
+        while not self.check_thread.stop:
+            if ctypes.windll.user32.PeekMessageA(ctypes.byref(msg), None, 0, 0, 1) != 0:
                 if msg.message == win32con.WM_HOTKEY:
                     self.running = not self.running
                 ctypes.windll.user32.TranslateMessage(ctypes.byref(msg))
                 ctypes.windll.user32.DispatchMessageA(ctypes.byref(msg))
-        finally:
-            ctypes.windll.user32.UnregisterHotKey(None, 1)
+            time.sleep(.2) #to keep CPU usage down
+
+        ctypes.windll.user32.UnregisterHotKey(None, 1)
+        return
      
     def run(self):
         self.my_start()
@@ -81,8 +93,10 @@ class CheckThread(threading.Thread):
     
     def __init__(self, auto_clicker):
         threading.Thread.__init__(self)
+        self.setDaemon(True)
         self.auto_clicker = auto_clicker
-        self.daemon = True
+        self.stop = False
+        self.auto_clicker.check_thread = self
         
     def run(self):
         self.auto_clicker.check_for_stop()
@@ -91,11 +105,14 @@ class GUI(threading.Thread):
 
     def __init__(self, auto_clicker, check_thread):
         threading.Thread.__init__(self)
+        self.setDaemon(True)
         self.auto_clicker = auto_clicker;
         self.check_thread = check_thread;
         self.fields = 'Window Name', 'Click Speed (in seconds)', 'On/Off Keybind (Default is F2)'
 
     def callback(self):
+        self.check_thread.stop = True
+        self.auto_clicker.stop = True
         self.root.quit()
 
     def run(self):
@@ -106,7 +123,7 @@ class GUI(threading.Thread):
         b1 = Button(self.root, text='Save',
                 command=(lambda e=ents: self.fetch(e)))
         b1.pack(side=LEFT, padx=5, pady=5)
-        b2 = Button(self.root, text='Quit', command=self.root.quit)
+        b2 = Button(self.root, text='Quit', command=self.callback)
         b2.pack(side=LEFT, padx=5, pady=5)
         self.root.mainloop()
 
@@ -146,6 +163,8 @@ def main():
     gui.start()
     
     gui.join()
+    check_thread.join()
+    auto_clicker.join()
     
     
 
