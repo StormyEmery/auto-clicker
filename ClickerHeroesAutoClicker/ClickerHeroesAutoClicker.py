@@ -4,6 +4,7 @@ import time
 import threading
 import msvcrt
 import pyHook, pythoncom
+import warnings
 
 from tkinter import *
 
@@ -12,7 +13,7 @@ class AutoClicker(threading.Thread):
     def __init__ (self):
         threading.Thread.__init__(self)
         self.setDaemon(True)
-        self.cps = .1;
+        self.cps = .1
         self.window_name = ""
         self.old_window_name = self.window_name
         self.keybind = "F2"
@@ -50,14 +51,12 @@ class AutoClicker(threading.Thread):
 
 
     def my_start(self):
-
         self.WindowExists()
         self.old_window_name = self.window_name
 
         if(self.window):
             while True:          
                 while self.running:
-                    print("Old: %s\n New: %s\n\n" % (self.old_window_name, self.window_name))
                     if(self.old_window_name != self.window_name):
                         self.WindowExists()
                     if(self.window):
@@ -65,10 +64,10 @@ class AutoClicker(threading.Thread):
                     time.sleep(self.cps)
 
                     if(self.stop): #break inner loop
-                        break;
+                        break
 
                 if(self.stop): #break outer loop
-                        break;
+                        break
 
                 time.sleep(0.2) #to keep CPU usage down while not auto-clicking
 
@@ -131,7 +130,6 @@ class GUI(threading.Thread):
         self.check_thread = check_thread
         self.mouse_input = mouse_input
         self.fields = 'Window Name', 'Click Speed (in seconds)', 'On/Off Keybind (Default is F2)'
-        self.start()
         self.windows = []
 
     def stop_callback(self):
@@ -139,56 +137,77 @@ class GUI(threading.Thread):
         self.auto_clicker.stop = True
         self.root.quit()
 
-    def run(self):
+    def setup_gui(self):
         self.root = Tk()
         self.root.title("Storm's Auto-Clicker")
-        self.root.iconbitmap('../Icons/clicker.ico')
+        self.root.iconbitmap('../Icons/clicker.ico') #../Icons/clicker.ico
         self.root.protocol("WM_DELETE_WINDOW", self.stop_callback)
-        ents = self.makeform(self.root)
-        self.root.bind('<Return>', (lambda event, e=ents: self.fetch(e)))   
-        b1 = Button(self.root, text='Save',
-                command=(lambda e=ents: self.fetch(e)))
-        b1.pack(side=LEFT, padx=5, pady=5)
-        b2 = Button(self.root, text='Quit', command=self.stop_callback)
-        b2.pack(side=LEFT, padx=5, pady=5)
+        
+        self.makeform()
+         
+    def run(self):
+        self.setup_gui()
         self.root.mainloop()
 
     def validate_cps_entry(self, cps):
-        if(cps < self.auto_clicker.min_cps or cps > self.auto_clicker.max_cps):
-            return False
-        return True
+        valid_cps = True
+        numeric_cps = .1
+        try:
+            numeric = float(cps)
+            if(float(cps) < self.auto_clicker.min_cps or float(cps) > self.auto_clicker.max_cps):
+                valid_cps = False
+        except ValueError:
+            valid_cps = False
+       
+        return valid_cps
+
+    def validate_window_name(self, entry):
+        valid_window_name = False
+        for window in self.windows:
+            text = entry[1].get()
+            if(text.lower() == window.lower()):
+                valid_window_name = True
+                if(entry[1]['bg'] == 'red'):
+                    entry[1]['bg'] = 'white'
+                break
+        return valid_window_name
+
+    def handle_input_error(self, entry, msg):
+        entry[1].delete(0,'end')
+        entry[1]['bg'] = 'red'
+        entry[1].insert(END, msg)
 
     def fetch(self, entries):
         count = 0 
-        valid_window_name = False
+
         for entry in entries:
             field = entry[0]
             text  = entry[1].get()
+
+            #window name entry
             if(count == 0):
                 self.auto_clicker.old_window_name = self.auto_clicker.window_name
                 self.auto_clicker.window_name = text
-                for window in self.windows:
-                    if(text.lower() == window.lower()):
-                        valid_window_name = True
-                        if(entry[1]['bg'] == 'red'):
-                            entry[1]['bg'] = 'white'
-                        break
+                valid_window_name = self.validate_window_name(entry)
+
                 if(not valid_window_name):
-                    entry[1].delete(0,'end')
-                    entry[1]['bg'] = 'red'
-                    entry[1].insert(END, "Cannot Find Window")
+                    self.handle_input_error(entry, "Window Cannot be Found")
+
+            #click speed entry
             elif(count == 1):
-                if(self.validate_cps_entry(float(text))):
+                if(self.validate_cps_entry(text)):
                     if(entry[1]['bg'] == 'red'):
                             entry[1]['bg'] = 'white'
                     self.auto_clicker.cps = float(text)
                 else:
-                    entry[1].delete(0, 'end')
-                    entry[1]['bg'] = 'red'
-                    entry[1].insert(END, "Value has to be between .05 and 86400")
+                    self.handle_input_error(entry, "Value has to be between .05 and 86400")
 
             count += 1
 
+        #since fetch() can be called multiple times, we don't want to try 
+        #and start threads that are already alive.
+        #so if they are already running, do nothing
+        #else, if given a valid window name, start the other two threads
         if(not self.check_thread.is_alive() and not self.auto_clicker.is_alive()):
             if(valid_window_name):
                 self.check_thread.start()
@@ -198,13 +217,13 @@ class GUI(threading.Thread):
         window_title = win32gui.GetWindowText(hwnd)
         if(win32gui.IsWindowVisible(hwnd) and window_title != ""):
             self.windows.append(window_title)
+            print(window_title)
 
-    def makeform(self, root):
-        win32gui.EnumWindows(self.get_all_window_titles, None)
-        
+    def make_entries(self):
         entries = []
+
         for field in self.fields:
-            row = Frame(root)
+            row = Frame(self.root)
             lab = Label(row, width=0, text=field, anchor='w')
             ent = Entry(row)
             row.pack(side=TOP, fill=X, padx=5, pady=5)
@@ -215,7 +234,8 @@ class GUI(threading.Thread):
                 ent.config(state=DISABLED)
             entries.append((field, ent))
 
-        row = Frame(root)
+        #Special entries for click position
+        row = Frame(self.root)
         lab = Label(row, width=0, text='Click Position (x, y)', anchor='w')
         self.ent_x = Entry(row, width=5)
         self.ent_y = Entry(row, width=5)
@@ -225,26 +245,51 @@ class GUI(threading.Thread):
         self.ent_y.pack(side=LEFT, expand=YES, padx=2)
         entries.append(('x', self.ent_x))
         entries.append(('y', self.ent_y))
-        self.b3 = Button(row, text='New Position', command=self.unlock_callback)
-        self.b3.pack(side=LEFT, padx=5, pady=5)
-        return entries
+
+        return (entries, row)
+
+    def make_buttons(self, entries):
+        self.click_position_button = Button(entries[1], text='New Position', command=self.unlock_callback)
+        self.click_position_button.pack(side=LEFT, padx=5, pady=5)
+
+        save_button = Button(self.root, text='Save',
+                command=(lambda e=entries[0]: self.fetch(e)))
+        save_button.pack(side=LEFT, padx=5, pady=5)
+
+        exit_button = Button(self.root, text='Quit', command=self.stop_callback)
+        exit_button.pack(side=LEFT, padx=5, pady=5)
+
+    def makeform(self):
+        win32gui.EnumWindows(self.get_all_window_titles, None)
+        
+        entries = self.make_entries()
+        self.make_buttons(entries)
+
+        self.root.bind('<Return>', (lambda event, e=entries[0]: self.fetch(e)))  
 
     def unlock_callback(self):
-        print(self.ent_x.get())
+        #sets background of these two entries to yellow
+        #and disables the new click position button
         self.ent_x.delete(0, 'end')
         self.ent_y.delete(0, 'end')
         self.ent_x['bg'] = 'yellow'
         self.ent_y['bg'] = 'yellow'
-        self.b3.config(state=DISABLED)
+        self.click_position_button.config(state=DISABLED)
         self.root.update()
+
         click_pos = self.mouse_input.get_mouse_positon()
+
+        #inserts the detected click position into the fields
         self.auto_clicker.click_x = click_pos[0]
         self.auto_clicker.click_y = click_pos[1]
         self.ent_x.insert(END, click_pos[0])
         self.ent_y.insert(END, click_pos[1])
         self.ent_x['bg'] = 'white'
         self.ent_y['bg'] = 'white'
-        self.b3.config(state=ACTIVE)
+        self.click_position_button.config(state=ACTIVE)
+
+        #If the window to be clicked has been found, 
+        #calculate window offsets
         if(self.auto_clicker.window):
             self.auto_clicker.calculate_percentages()
 
@@ -258,6 +303,7 @@ class MouseInput():
     def get_mouse_positon(self):
         self.active = True
         self.position = None
+
         def onClick(event):
             if(self.active):
                 self.position = event.Position
@@ -267,6 +313,7 @@ class MouseInput():
         hm.SubscribeMouseAllButtonsDown(onClick)
         hm.HookMouse()
         hm.HookKeyboard() 
+
         while self.position == None:
             pythoncom.PumpWaitingMessages()
             time.sleep(.01)
@@ -282,13 +329,16 @@ def main():
     auto_clicker = AutoClicker()
     check_thread = CheckThread(auto_clicker)
     gui = GUI(auto_clicker, check_thread, mouse_input)
-
+    gui.start()
     
     gui.join()
     if(check_thread.is_alive() and auto_clicker.is_alive()):
         check_thread.join()
         auto_clicker.join()
-    
+
+    ctypes.windll.user32.PostQuitMessage(0)
+
 
 if __name__ == "__main__":
+    warnings.simplefilter('ignore')
     main()
