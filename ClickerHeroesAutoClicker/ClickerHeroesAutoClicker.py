@@ -1,9 +1,9 @@
-﻿import win32gui, win32api, win32con
+import win32gui, win32api, win32con
 import ctypes, ctypes.wintypes
 import time
 import threading
 import msvcrt
-import pyHook, pythoncom
+from pynput import mouse
 import warnings
 
 from tkinter import *
@@ -31,7 +31,6 @@ class AutoClicker(threading.Thread):
     def WindowExists(self):
         try:
             window = win32gui.FindWindow(None, self.window_name)
-
         except win32gui.error:
             self.window = None
         else:
@@ -40,20 +39,16 @@ class AutoClicker(threading.Thread):
 
     def calculate_percentages(self):
         rect = win32gui.GetWindowRect(self.window)
-
         x = rect[0]
         y = rect[1]
         w = rect[2] - x
         h = rect[3] - y
-
         self.percentage_x = abs(x - self.click_x) / float(w)
         self.percentage_y = abs(y - self.click_y) / float(h)
-
 
     def my_start(self):
         self.WindowExists()
         self.old_window_name = self.window_name
-
         if(self.window):
             while True:          
                 while self.running:
@@ -62,37 +57,27 @@ class AutoClicker(threading.Thread):
                     if(self.window):
                         self.left_click()
                     time.sleep(self.cps)
-
-                    if(self.stop): #break inner loop
+                    if(self.stop):
                         break
-
-                if(self.stop): #break outer loop
+                if(self.stop):
                         break
-
-                time.sleep(0.2) #to keep CPU usage down while not auto-clicking
-
+                time.sleep(0.2)
         else:
              print("Window NOT Found")
 
-
     def left_click(self):
         rect = win32gui.GetWindowRect(self.window)
-
         x = rect[0]
         y = rect[1]
         w = rect[2] - x
         h = rect[3] - y
-    
         pos = win32gui.ScreenToClient(self.window, (x + int(w * self.percentage_x), y + int(h * self.percentage_y)))
         lparam = win32api.MAKELONG(pos[0], pos[1])
-
         win32gui.PostMessage(self.window, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
         win32gui.PostMessage(self.window, win32con.WM_LBUTTONUP, 0, lparam)
 
-    #http://stackoverflow.com/questions/15777719/how-to-detect-key-press-when-the-console-window-has-lost-focus
     def check_for_stop(self):
         ctypes.windll.user32.RegisterHotKey(None, 1, 0, win32con.VK_F2)
-
         msg = ctypes.wintypes.MSG()
         while not self.check_thread.stop:
             if ctypes.windll.user32.PeekMessageA(ctypes.byref(msg), None, 0, 0, 1) != 0:
@@ -100,14 +85,12 @@ class AutoClicker(threading.Thread):
                     self.running = not self.running
                 ctypes.windll.user32.TranslateMessage(ctypes.byref(msg))
                 ctypes.windll.user32.DispatchMessageA(ctypes.byref(msg))
-            time.sleep(.2) #to keep CPU usage down
-
+            time.sleep(.2)
         ctypes.windll.user32.UnregisterHotKey(None, 1)
         return
      
     def run(self):
         self.my_start()
-
 
 class CheckThread(threading.Thread):
     
@@ -140,9 +123,8 @@ class GUI(threading.Thread):
     def setup_gui(self):
         self.root = Tk()
         self.root.title("Storm's Auto-Clicker")
-        self.root.iconbitmap('../Icons/clicker.ico') #../Icons/clicker.ico
+        # self.root.iconbitmap('../Icons/clicker.ico') # Commented out as icon path may not exist
         self.root.protocol("WM_DELETE_WINDOW", self.stop_callback)
-        
         self.makeform()
          
     def run(self):
@@ -151,14 +133,12 @@ class GUI(threading.Thread):
 
     def validate_cps_entry(self, cps):
         valid_cps = True
-        numeric_cps = .1
         try:
             numeric = float(cps)
             if(float(cps) < self.auto_clicker.min_cps or float(cps) > self.auto_clicker.max_cps):
                 valid_cps = False
         except ValueError:
             valid_cps = False
-       
         return valid_cps
 
     def validate_window_name(self, entry):
@@ -179,21 +159,15 @@ class GUI(threading.Thread):
 
     def fetch(self, entries):
         count = 0 
-
         for entry in entries:
             field = entry[0]
-            text  = entry[1].get()
-
-            #window name entry
+            text = entry[1].get()
             if(count == 0):
                 self.auto_clicker.old_window_name = self.auto_clicker.window_name
                 self.auto_clicker.window_name = text
                 valid_window_name = self.validate_window_name(entry)
-
                 if(not valid_window_name):
                     self.handle_input_error(entry, "Window Cannot be Found")
-
-            #click speed entry
             elif(count == 1):
                 if(self.validate_cps_entry(text)):
                     if(entry[1]['bg'] == 'red'):
@@ -201,13 +175,7 @@ class GUI(threading.Thread):
                     self.auto_clicker.cps = float(text)
                 else:
                     self.handle_input_error(entry, "Value has to be between .05 and 86400")
-
             count += 1
-
-        #since fetch() can be called multiple times, we don't want to try 
-        #and start threads that are already alive.
-        #so if they are already running, do nothing
-        #else, if given a valid window name, start the other two threads
         if(not self.check_thread.is_alive() and not self.auto_clicker.is_alive()):
             if(valid_window_name):
                 self.check_thread.start()
@@ -221,7 +189,6 @@ class GUI(threading.Thread):
 
     def make_entries(self):
         entries = []
-
         for field in self.fields:
             row = Frame(self.root)
             lab = Label(row, width=0, text=field, anchor='w')
@@ -233,8 +200,6 @@ class GUI(threading.Thread):
                 ent.insert(END, "Currently Unavailable")
                 ent.config(state=DISABLED)
             entries.append((field, ent))
-
-        #Special entries for click position
         row = Frame(self.root)
         lab = Label(row, width=0, text='Click Position (x, y)', anchor='w')
         self.ent_x = Entry(row, width=5)
@@ -245,41 +210,31 @@ class GUI(threading.Thread):
         self.ent_y.pack(side=LEFT, expand=YES, padx=2)
         entries.append(('x', self.ent_x))
         entries.append(('y', self.ent_y))
-
         return (entries, row)
 
     def make_buttons(self, entries):
         self.click_position_button = Button(entries[1], text='New Position', command=self.unlock_callback)
         self.click_position_button.pack(side=LEFT, padx=5, pady=5)
-
         save_button = Button(self.root, text='Save',
                 command=(lambda e=entries[0]: self.fetch(e)))
         save_button.pack(side=LEFT, padx=5, pady=5)
-
         exit_button = Button(self.root, text='Quit', command=self.stop_callback)
         exit_button.pack(side=LEFT, padx=5, pady=5)
 
     def makeform(self):
         win32gui.EnumWindows(self.get_all_window_titles, None)
-        
         entries = self.make_entries()
         self.make_buttons(entries)
-
         self.root.bind('<Return>', (lambda event, e=entries[0]: self.fetch(e)))  
 
     def unlock_callback(self):
-        #sets background of these two entries to yellow
-        #and disables the new click position button
         self.ent_x.delete(0, 'end')
         self.ent_y.delete(0, 'end')
         self.ent_x['bg'] = 'yellow'
         self.ent_y['bg'] = 'yellow'
         self.click_position_button.config(state=DISABLED)
         self.root.update()
-
-        click_pos = self.mouse_input.get_mouse_positon()
-
-        #inserts the detected click position into the fields
+        click_pos = self.mouse_input.get_mouse_position()
         self.auto_clicker.click_x = click_pos[0]
         self.auto_clicker.click_y = click_pos[1]
         self.ent_x.insert(END, click_pos[0])
@@ -287,42 +242,32 @@ class GUI(threading.Thread):
         self.ent_x['bg'] = 'white'
         self.ent_y['bg'] = 'white'
         self.click_position_button.config(state=ACTIVE)
-
-        #If the window to be clicked has been found, 
-        #calculate window offsets
         if(self.auto_clicker.window):
             self.auto_clicker.calculate_percentages()
 
-
-class MouseInput():
+class MouseInput:
 
     def __init__(self):
         self.position = None
         self.active = True
 
-    def get_mouse_positon(self):
+    def get_mouse_position(self):
         self.active = True
         self.position = None
 
-        def onClick(event):
-            if(self.active):
-                self.position = event.Position
-            return True
-        
-        hm = pyHook.HookManager()
-        hm.SubscribeMouseAllButtonsDown(onClick)
-        hm.HookMouse()
-        hm.HookKeyboard() 
+        def on_click(x, y, button, pressed):
+            if self.active and pressed:
+                self.position = (x, y)
+                return False  # Stop listener after capturing one click
 
-        while self.position == None:
-            pythoncom.PumpWaitingMessages()
-            time.sleep(.01)
-        
-        hm.UnhookMouse()
-        hm.UnhookKeyboard()
+        listener = mouse.Listener(on_click=on_click)
+        listener.start()
+        listener.wait()  # Wait for listener to start
+        while self.position is None:
+            time.sleep(0.01)
+        listener.stop()
         self.active = False
         return self.position
-
 
 def main():
     mouse_input = MouseInput()
@@ -330,14 +275,11 @@ def main():
     check_thread = CheckThread(auto_clicker)
     gui = GUI(auto_clicker, check_thread, mouse_input)
     gui.start()
-    
     gui.join()
     if(check_thread.is_alive() and auto_clicker.is_alive()):
         check_thread.join()
         auto_clicker.join()
-
     ctypes.windll.user32.PostQuitMessage(0)
-
 
 if __name__ == "__main__":
     warnings.simplefilter('ignore')
